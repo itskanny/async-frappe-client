@@ -30,7 +30,7 @@ class NotUploadableException(FrappeException):
 
 
 class FrappeClient(object):
-	def __init__(self, url=None, username=None, password=None, api_key=None, api_secret=None, verify=True'):
+	def __init__(self, url=None, username=None, password=None, api_key=None, api_secret=None, verify=True):
 		self.headers = dict(Accept='application/json')
 		self.session = httpx.AsyncClient(verify=verify)
 		self.can_download = []
