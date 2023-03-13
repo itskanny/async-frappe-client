@@ -1,3 +1,4 @@
+import httpx
 import requests
 import json
 from base64 import b64encode
@@ -29,9 +30,9 @@ class NotUploadableException(FrappeException):
 
 
 class FrappeClient(object):
-	def __init__(self, url=None, username=None, password=None, api_key=None, api_secret=None, verify=True):
+	def __init__(self, url=None, username=None, password=None, api_key=None, api_secret=None, verify=True'):
 		self.headers = dict(Accept='application/json')
-		self.session = requests.Session()
+		self.session = httpx.AsyncClient(verify=verify)
 		self.can_download = []
 		self.verify = verify
 		self.url = url
@@ -48,12 +49,12 @@ class FrappeClient(object):
 	def __exit__(self, *args, **kwargs):
 		self.logout()
 
-	def login(self, username, password):
-		r = self.session.post(self.url, data={
+	async def login(self, username, password):
+		r = await self.session.post(self.url, data={
 			'cmd': 'login',
 			'usr': username,
 			'pwd': password
-		}, verify=self.verify, headers=self.headers)
+		}, headers=self.headers)
 
 		if r.json().get('message') == "Logged In":
 			self.can_download = []
@@ -66,12 +67,12 @@ class FrappeClient(object):
 		auth_header = {'Authorization': 'Basic {}'.format(token)}
 		self.session.headers.update(auth_header)
 
-	def logout(self):
-		self.session.get(self.url, params={
+	async def logout(self):
+		await self.session.get(self.url, params={
 			'cmd': 'logout',
 		})
 
-	def get_list(self, doctype, fields='"*"', filters=None, limit_start=0, limit_page_length=0, order_by=None):
+	async def get_list(self, doctype, fields='"*"', filters=None, limit_start=0, limit_page_length=0, order_by=None):
 		'''Returns list of records of a particular type'''
 		if not isinstance(fields, unicode):
 			fields = json.dumps(fields)
@@ -86,74 +87,74 @@ class FrappeClient(object):
 		if order_by:
 			params['order_by'] = order_by
 
-		res = self.session.get(self.url + "/api/resource/" + doctype, params=params,
-			verify=self.verify, headers=self.headers)
+		res = await self.session.get(self.url + "/api/resource/" + doctype, params=params,
+			 headers=self.headers)
 		return self.post_process(res)
 
-	def insert(self, doc):
+	async def insert(self, doc):
 		'''Insert a document to the remote server
 
 		:param doc: A dict or Document object to be inserted remotely'''
-		res = self.session.post(self.url + "/api/resource/" + quote(doc.get("doctype")),
+		res = await self.session.post(self.url + "/api/resource/" + quote(doc.get("doctype")),
 			data={"data":json.dumps(doc)})
 		return self.post_process(res)
 
-	def insert_many(self, docs):
+	async def insert_many(self, docs):
 		'''Insert multiple documents to the remote server
 
 		:param docs: List of dict or Document objects to be inserted in one request'''
-		return self.post_request({
-			"cmd": "frappe.client.insert_many",
+		return await self.post_request({
+			"cmd": f"frappe.client.insert_many",
 			"docs": frappe.as_json(docs)
 		})
 
-	def update(self, doc):
+	async def update(self, doc):
 		'''Update a remote document
 
 		:param doc: dict or Document object to be updated remotely. `name` is mandatory for this'''
 		url = self.url + "/api/resource/" + quote(doc.get("doctype")) + "/" + quote(doc.get("name"))
-		res = self.session.put(url, data={"data":json.dumps(doc)})
+		res = await self.session.put(url, data={"data":json.dumps(doc)})
 		return self.post_process(res)
 
-	def bulk_update(self, docs):
+	async def bulk_update(self, docs):
 		'''Bulk update documents remotely
 
 		:param docs: List of dict or Document objects to be updated remotely (by `name`)'''
-		return self.post_request({
+		return await self.post_request({
 			'cmd': 'frappe.client.bulk_update',
 			'docs': json.dumps(docs)
 		})
 
-	def delete(self, doctype, name):
+	async def delete(self, doctype, name):
 		'''Delete remote document by name
 
 		:param doctype: `doctype` to be deleted
 		:param name: `name` of document to be deleted'''
-		return self.post_request({
+		return await self.post_request({
 			'cmd': 'frappe.client.delete',
 			'doctype': doctype,
 			'name': name
 		})
 
-	def submit(self, doclist):
+	async def submit(self, doclist):
 		'''Submit remote document
 
 		:param doc: dict or Document object to be submitted remotely'''
-		return self.post_request({
+		return await self.post_request({
 			'cmd': 'frappe.client.submit',
 			'doclist': json.dumps(doclist)
 		})
 
-	def get_value(self, doctype, fieldname=None, filters=None):
-		return self.get_request({
+	async def get_value(self, doctype, fieldname=None, filters=None):
+		return await self.get_request({
 			'cmd': 'frappe.client.get_value',
 			'doctype': doctype,
 			'fieldname': fieldname or 'name',
 			'filters': json.dumps(filters)
 		})
 
-	def set_value(self, doctype, docname, fieldname, value):
-		return self.post_request({
+	async def set_value(self, doctype, docname, fieldname, value):
+		return await self.post_request({
 			'cmd': 'frappe.client.set_value',
 			'doctype': doctype,
 			'name': docname,
@@ -161,14 +162,14 @@ class FrappeClient(object):
 			'value': value
 		})
 
-	def cancel(self, doctype, name):
-		return self.post_request({
+	async def cancel(self, doctype, name):
+		return await self.post_request({
 			'cmd': 'frappe.client.cancel',
 			'doctype': doctype,
 			'name': name
 		})
 
-	def get_doc(self, doctype, name="", filters=None, fields=None):
+	async def get_doc(self, doctype, name="", filters=None, fields=None):
 		'''Returns a single remote document
 
 		:param doctype: DocType of the document to be returned
@@ -181,12 +182,12 @@ class FrappeClient(object):
 		if fields:
 			params["fields"] = json.dumps(fields)
 
-		res = self.session.get(self.url + '/api/resource/' + doctype + '/' + name,
+		res = await self.session.get(self.url + '/api/resource/' + doctype + '/' + name,
 							   params=params)
 
 		return self.post_process(res)
 
-	def rename_doc(self, doctype, old_name, new_name):
+	async def rename_doc(self, doctype, old_name, new_name):
 		'''Rename remote document
 
 		:param doctype: DocType of the document to be renamed
@@ -198,37 +199,37 @@ class FrappeClient(object):
 			'old_name': old_name,
 			'new_name': new_name
 		}
-		return self.post_request(params)
+		return await self.post_request(params)
 
-	def get_pdf(self, doctype, name, print_format='Standard', letterhead=True):
+	async def get_pdf(self, doctype, name, print_format='Standard', letterhead=True):
 		params = {
 			'doctype': doctype,
 			'name': name,
 			'format': print_format,
 			'no_letterhead': int(not bool(letterhead))
 		}
-		response = self.session.get(
+		response = await self.session.get(
 			self.url + '/api/method/frappe.templates.pages.print.download_pdf',
 			params=params, stream=True)
 
 		return self.post_process_file_stream(response)
 
-	def get_html(self, doctype, name, print_format='Standard', letterhead=True):
+	async def get_html(self, doctype, name, print_format='Standard', letterhead=True):
 		params = {
 			'doctype': doctype,
 			'name': name,
 			'format': print_format,
 			'no_letterhead': int(not bool(letterhead))
 		}
-		response = self.session.get(
+		response = await self.session.get(
 			self.url + '/print', params=params, stream=True
 		)
 		return self.post_process_file_stream(response)
 
-	def __load_downloadable_templates(self):
-		self.can_download = self.get_api('frappe.core.page.data_import_tool.data_import_tool.get_doctypes')
+	async def __load_downloadable_templates(self):
+		self.can_download = await self.get_api('frappe.core.page.data_import_tool.data_import_tool.get_doctypes')
 
-	def get_upload_template(self, doctype, with_data=False):
+	async def get_upload_template(self, doctype, with_data=False):
 		if not self.can_download:
 			self.__load_downloadable_templates()
 
@@ -242,27 +243,27 @@ class FrappeClient(object):
 			'all_doctypes': 'Yes'
 		}
 
-		request = self.session.get(
+		request = await self.session.get(
 			self.url + '/api/method/frappe.core.page.data_import_tool.exporter.get_template',
 			params=params
 		)
 		return self.post_process_file_stream(request)
 
-	def get_api(self, method, params={}):
-		res = self.session.get(self.url + '/api/method/' + method + '/', params=params)
+	async def get_api(self, method, params={}):
+		res = await self.session.get(self.url + '/api/method/' + method + '/', params=params)
 		return self.post_process(res)
 
-	def post_api(self, method, params={}):
-		res = self.session.post(self.url + '/api/method/' + method + '/', params=params)
+	async def post_api(self, method, params={}):
+		res = await self.session.post(self.url + '/api/method/' + method + '/', params=params)
 		return self.post_process(res)
 
-	def get_request(self, params):
-		res = self.session.get(self.url, params=self.preprocess(params))
+	async def get_request(self, params):
+		res = await self.session.get(self.url, params=self.preprocess(params))
 		res = self.post_process(res)
 		return res
 
-	def post_request(self, data):
-		res = self.session.post(self.url, data=self.preprocess(data))
+	async def post_request(self, data):
+		res = await self.session.post(self.url, data=self.preprocess(data))
 		res = self.post_process(res)
 		return res
 
