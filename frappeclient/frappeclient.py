@@ -30,12 +30,13 @@ class NotUploadableException(FrappeException):
 
 
 class FrappeClient(object):
-	def __init__(self, url=None, username=None, password=None, api_key=None, api_secret=None, verify=True):
+	def __init__(self, url=None, username=None, password=None, api_key=None, api_secret=None, verify=False, framework='frappe'):
 		self.headers = dict(Accept='application/json')
 		self.session = httpx.AsyncClient(verify=verify)
 		self.can_download = []
 		self.verify = verify
 		self.url = url
+		self.framework=framework
 
 		if username and password:
 			self.login(username, password)
@@ -104,8 +105,8 @@ class FrappeClient(object):
 
 		:param docs: List of dict or Document objects to be inserted in one request'''
 		return await self.post_request({
-			"cmd": f"frappe.client.insert_many",
-			"docs": frappe.as_json(docs)
+			"cmd": f"{self.framework}.client.insert_many",
+			"docs": json.dumps(docs)
 		})
 
 	async def update(self, doc):
@@ -121,7 +122,7 @@ class FrappeClient(object):
 
 		:param docs: List of dict or Document objects to be updated remotely (by `name`)'''
 		return await self.post_request({
-			'cmd': 'frappe.client.bulk_update',
+			'cmd': f'{self.framework}.client.bulk_update',
 			'docs': json.dumps(docs)
 		})
 
@@ -131,7 +132,7 @@ class FrappeClient(object):
 		:param doctype: `doctype` to be deleted
 		:param name: `name` of document to be deleted'''
 		return await self.post_request({
-			'cmd': 'frappe.client.delete',
+			'cmd': f'{self.framework}.client.delete',
 			'doctype': doctype,
 			'name': name
 		})
@@ -141,13 +142,13 @@ class FrappeClient(object):
 
 		:param doc: dict or Document object to be submitted remotely'''
 		return await self.post_request({
-			'cmd': 'frappe.client.submit',
+			'cmd': f'{self.framework}.client.submit',
 			'doclist': json.dumps(doclist)
 		})
 
 	async def get_value(self, doctype, fieldname=None, filters=None):
 		return await self.get_request({
-			'cmd': 'frappe.client.get_value',
+			'cmd': f'{self.framework}.client.get_value',
 			'doctype': doctype,
 			'fieldname': fieldname or 'name',
 			'filters': json.dumps(filters)
@@ -155,7 +156,7 @@ class FrappeClient(object):
 
 	async def set_value(self, doctype, docname, fieldname, value):
 		return await self.post_request({
-			'cmd': 'frappe.client.set_value',
+			'cmd': f'{self.framework}.client.set_value',
 			'doctype': doctype,
 			'name': docname,
 			'fieldname': fieldname,
@@ -164,7 +165,7 @@ class FrappeClient(object):
 
 	async def cancel(self, doctype, name):
 		return await self.post_request({
-			'cmd': 'frappe.client.cancel',
+			'cmd': f'{self.framework}.client.cancel',
 			'doctype': doctype,
 			'name': name
 		})
@@ -194,7 +195,7 @@ class FrappeClient(object):
 		:param old_name: Current `name` of the document to be renamed
 		:param new_name: New `name` to be set'''
 		params = {
-			'cmd': 'frappe.client.rename_doc',
+			'cmd': f'{self.framework}.client.rename_doc',
 			'doctype': doctype,
 			'old_name': old_name,
 			'new_name': new_name
@@ -208,11 +209,11 @@ class FrappeClient(object):
 			'format': print_format,
 			'no_letterhead': int(not bool(letterhead))
 		}
-		response = await self.session.get(
-			self.url + '/api/method/frappe.templates.pages.print.download_pdf',
-			params=params, stream=True)
 
-		return self.post_process_file_stream(response)
+		async with self.session.stream("GET", self.url + f'/api/method/{self.framework}.templates.pages.print.download_pdf', params=params) as response:
+			await response.aread()
+			return self.post_process_file_stream(response)
+
 
 	async def get_html(self, doctype, name, print_format='Standard', letterhead=True):
 		params = {
@@ -221,17 +222,18 @@ class FrappeClient(object):
 			'format': print_format,
 			'no_letterhead': int(not bool(letterhead))
 		}
-		response = await self.session.get(
-			self.url + '/print', params=params, stream=True
-		)
-		return self.post_process_file_stream(response)
+
+		async with self.session.stream("GET", self.url + f'/print', params=params) as response:
+			await response.aread()
+			return self.post_process_file_stream(response)
+
 
 	async def __load_downloadable_templates(self):
-		self.can_download = await self.get_api('frappe.core.page.data_import_tool.data_import_tool.get_doctypes')
+		self.can_download = await self.get_api(f'{self.framework}.core.page.data_import_tool.data_import_tool.get_doctypes')
 
 	async def get_upload_template(self, doctype, with_data=False):
 		if not self.can_download:
-			self.__load_downloadable_templates()
+			await self.__load_downloadable_templates()
 
 		if doctype not in self.can_download:
 			raise NotUploadableException(doctype)
@@ -244,7 +246,7 @@ class FrappeClient(object):
 		}
 
 		request = await self.session.get(
-			self.url + '/api/method/frappe.core.page.data_import_tool.exporter.get_template',
+			self.url + f'/api/method/{self.framework}.core.page.data_import_tool.exporter.get_template',
 			params=params
 		)
 		return self.post_process_file_stream(request)
@@ -292,7 +294,7 @@ class FrappeClient(object):
 			return None
 
 	def post_process_file_stream(self, response):
-		if response.ok:
+		if response.is_success:
 			output = StringIO()
 			for block in response.iter_content(1024):
 				output.write(block)

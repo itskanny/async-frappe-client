@@ -1,27 +1,39 @@
 ## Frappe Client
 
-Simple Frappe-like Python wrapper for Frappe REST API
+Simple Async wrapper for FrappeClient
+
+
+> :warning: **Warning:** This project is still not complete and some testing is required. If you can help that will be great. For now all methods work but test are not yet converted
+
 
 ### Install
 
 ```
-git clone https://github.com/frappe/frappe-client
-pip install -e frappe-client
+git clone https://github.com/itskanny/async-frappe-client
+pip install -e async-frappe-client
 ```
 
 ### API
 
 FrappeClient has a frappe like API
+- `framework`
+it is used if you have customized the frappe framework
 
 #### Login
 
 Login to the Frappe HTTP Server by creating a new FrappeClient object
 
 ```py
+import asyncio
 from frappeclient import FrappeClient
 
-conn = FrappeClient("example.com")
-conn.login("user@example.com", "password")
+
+async def main():
+    conn = FrappeClient("example.com")
+    await conn.login("user@example.com", "password")
+
+
+asyncio.run(main())
 ```
 
 #### Use token based authentication
@@ -48,7 +60,7 @@ Arguments:
 - `order_by`: sort key and order (default is `modified desc`)
 
 ```py
-users = conn.get_list('User', fields = ['name', 'first_name', 'last_name'], , filters = {'user_type':'System User'})
+users = await conn.get_list('User', fields = ['name', 'first_name', 'last_name'], , filters = {'user_type':'System User'})
 ```
 
 Example of filters:
@@ -65,7 +77,7 @@ Arguments:
 - `doc`: Document object
 
 ```python
-doc = conn.insert({
+doc = await conn.insert({
 	"doctype": "Customer",
 	"customer_name": "Example Co",
 	"customer_type": "Company",
@@ -82,7 +94,7 @@ Arguments
 - `name`
 
 ```py
-doc = conn.get_doc('Customer', 'Example Co')
+doc = await conn.get_doc('Customer', 'Example Co')
 ```
 
 #### get_value
@@ -96,7 +108,7 @@ Arguments:
 - `filters`
 
 ```py
-customer_name = conn.get_value("Customer", "name", {"website": "example.net"})
+customer_name = await conn.get_value("Customer", "name", {"website": "example.net"})
 ```
 
 #### update
@@ -107,9 +119,9 @@ Arguments:
 - `doc`: JSON document object
 
 ```py
-doc = conn.get_doc('Customer', 'Example Co')
+doc = await conn.get_doc('Customer', 'Example Co')
 doc['phone'] = '000000000'
-conn.update(doc)
+await conn.update(doc)
 ```
 
 #### delete
@@ -121,7 +133,7 @@ Arguments:
 - `name`
 
 ```py
-conn.delete('Customer', 'Example Co')
+await conn.delete('Customer', 'Example Co')
 ```
 
 ### Example
@@ -129,23 +141,27 @@ conn.delete('Customer', 'Example Co')
 ```python
 from frappeclient import FrappeClient
 
-conn = FrappeClient("example.com", "user@example.com", "password")
-new_notes = [
-	{"doctype": "Note", "title": "Sing", "public": True},
-	{"doctype": "Note", "title": "a", "public": True},
-	{"doctype": "Note", "title": "Song", "public": True},
-	{"doctype": "Note", "title": "of", "public": True},
-	{"doctype": "Note", "title": "sixpence", "public": True}
-]
+async def main():
+    conn = FrappeClient("example.com", "user@example.com", "password")
+    new_notes = [
+        {"doctype": "Note", "title": "Sing", "public": True},
+        {"doctype": "Note", "title": "a", "public": True},
+        {"doctype": "Note", "title": "Song", "public": True},
+        {"doctype": "Note", "title": "of", "public": True},
+        {"doctype": "Note", "title": "sixpence", "public": True}
+    ]
+    
+    for note in new_notes:
+        print(conn.insert(note))
+    
+    # get note starting with s
+    notes = conn.get_list('Note',
+        filters={'title': ('like', 's')},
+        fields=["title", "public"]
+    )
 
-for note in new_notes:
-	print(conn.insert(note))
+asyncio.run(main())
 
-# get note starting with s
-notes = conn.get_list('Note',
-	filters={'title': ('like', 's')},
-	fields=["title", "public"]
-)
 ```
 
 ### Example
